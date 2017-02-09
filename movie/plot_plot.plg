@@ -1,0 +1,14 @@
+
+set term png size 1024,768 enhanced
+set out 'plot.png'
+unset colorbox
+set size ratio 1
+unset xtics
+unset ytics
+#set label 1 sprintf("phi = %1.3f",phi) at 1.02,0.9 font "arial,16"
+#set label 2 sprintf("pb = %1.2f",pb) at 1.02,0.85 font "arial,16"
+#set label 3 sprintf("d{/Symbol g}/dt = %g",rate) at 1.02,0.80 font "arial,16"
+#set label 4 sprintf("{/Symbol g} = %1.2f",gamma) at 1.02,0.75 font "arial,16"
+load 'input_plot.txt'
+p [0:1][0:1] -1 t ''
+#p [0:l][0:l] 'plot.dat' u 1:2 w p ps 2 pt 6 t '' 

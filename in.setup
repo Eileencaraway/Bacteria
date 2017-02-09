@@ -1,0 +1,114 @@
+#size of the box is Lbox x Lbox
+variable	Lbox	equal 66
+# linear size of a bacteria
+variable	LL	equal	1.9 # this is the length of the smallest length of the bacteria, in micron
+#diameter of a bead
+variable	Diameter	equal	0.6  #this will be the approximate width of a rod/bacteria, in micron
+# number of atoms per particle
+variable        NumAtomMolecule equal 7 #if off, an atom is at the center of the molecue
+# number of molecules of intermediate size, to handle growth
+variable Nmesh equal 300
+#number of mesh in the simulation box
+variable 	mesh_size equal ${Lbox}/${Nmesh}
+variable	NumGrowMolecules	equal 10
+#temperature
+variable	Temperature	equal	0.5
+#dimensionality
+dimension	2
+#boundary conditions
+boundary	p p p
+#atom style
+#atom_style	bond
+atom_style	molecular
+#neighbor
+neighbor	0.3 bin
+neigh_modify	delay 5
+
+# when a molecule grow, we destroy a molecule and insert one slightly bigger. The two molecules
+# have the same index, so we know that they are the same molecule.
+fix ADDindex all property/atom i_index ghost yes
+fix ADDcharge all property/atom q ghost yes
+
+#lattice and units
+lattice		sq	1
+units 		lj
+#integration timestep
+variable	dt_integration	equal	0.002 #second
+timestep  	${dt_integration}
+#damping parameter
+#variable        Tdamping        equal 100*${dt_integration}
+
+#simulation region
+region 	SimRegion block 0 ${Lbox} 0 ${Lbox} -100 100
+create_box 2 SimRegion
+
+#interaction between the particles (of different bacteria), we use a truncated LJ as a try
+variable        cutoff equal ${Diameter}
+variable	Kn	equal	10000
+variable	DiameterPush	equal ${Diameter}/10
+
+#pair_style      repulsiveQ ${Kn} ${cutoff} 2
+#pair_coeff	1 1 ${Kn} ${Diameter}
+#pair_coeff	1 2 ${Kn} ${DiameterPush}
+#pair_coeff	2 2 ${Kn} ${DiameterPush}
+#mass    *       1.0/${NumAtomMolecule}
+#variable	communicate_cutoff	equal	2*${LL}
+#comm_style	brick
+#comm_modify 	cutoff	${communicate_cutoff}
+
+variable	DiffusionCoefficient equal 0.1 # micrometer^2/sec, roughly estimated from fig.6a of BioPhys Journal 100, 1608, 2010
+variable        viscosity       equal   10
+variable        Torque          equal   4
+variable        ForceTorque     equal   ${Torque}*${NumAtomMolecule}/${LL}*${viscosity}
+#this is the instantaneous velocity, we take to be the velocity in the running state
+#variable        velocity        equal   0.02 #micrometer/second (roughly estimated from fig.6a of BioPhys Journal 100, 1608, 2010)
+variable        velocity        equal   0.04 #micrometer/second (roughly estimated from fig.6a of BioPhys Journal 100, 1608, 2010)
+variable        Frun            equal   ${viscosity}*${velocity}*${NumAtomMolecule} #as the drag force is proportional to NumAtomMolecule
+
+variable grid_cover equal  ceil(${LL}*${Diameter}/(${mesh_size}*${mesh_size}))
+variable max_q equal 20
+variable	CutoffPLSInteraction	equal	${Diameter}
+variable	ExpDecayPLSInteraction	equal	   1/(${Diameter}*${Diameter})            ##2.7
+variable	AmplituePLSInteraction	equal	  ${Frun}*${Diameter}/(${grid_cover}*sqrt(2)*0.606*${max_q}) ## not sure > 1 means attraction 0.02
+print """
+grid_cover = ${grid_cover}
+AmplituePLSInteraction = ${AmplituePLSInteraction}
+""" file grid.dat
+
+pair_style 	hybrid repulsiveQ ${Kn} ${cutoff} 2 gaussQ ${CutoffPLSInteraction}
+pair_coeff	1 1 repulsiveQ ${Kn} ${Diameter}
+pair_coeff	1 2 gaussQ ${AmplituePLSInteraction} ${ExpDecayPLSInteraction} ${CutoffPLSInteraction}
+pair_coeff	2 2 none
+mass    	1       1.0/${NumAtomMolecule}
+mass    	2       1.0
+variable	communicate_cutoff	equal	2*${LL}
+comm_style	brick
+comm_modify 	cutoff	${communicate_cutoff}
+
+
+#variable	eps_particles		equal	1
+#variable	sigma_particles		equal	${cut_particles}/2^(1.0/6)
+#pair_style      lj/cut  ${Diameter}
+#pair_coeff      1 1 ${eps_particles} ${sigma_particles} ${cut_particles}
+#pair_modify	shift	yes
+#mass	1	1
+
+#log log.lammps
+thermo_style	custom step atoms temp pe ke press
+thermo		100
+
+fix 2D all enforce2d
+group mobile id 1
+group stationary id 1
+neigh_modify exclude molecule all
+group mobile clear
+group stationary clear
+
+
+
+#molecule TemplateBacteria template.bacteria
+#create_atoms 0 single 0 0 0 mol TemplateBacteria 1
+#velocity all set 0.0 0.0 0.0
+#fix force all addforce 10.0 0 0
+#fix NVE2 all rigid/nve/small molecule
+#run 100000

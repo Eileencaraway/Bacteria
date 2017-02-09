@@ -1,0 +1,119 @@
+#size of the box is Lbox x Lbox
+variable	Lbox	equal 100
+# linear size of a bacteria
+variable	LL	equal	5
+# number of atoms per particle
+variable	NumAtomMolecule	equal 10
+#diameter of a bead
+variable	Diameter	equal	1  #this will be the approximate width of a rod/bacteria
+#temperature
+variable	Temperature	equal	0.5
+#dimensionality
+dimension	2
+#boundary conditions
+boundary	p p p
+#atom style
+atom_style	bond
+#neighbor
+neighbor	0.3 bin
+neigh_modify	delay 5
+
+#lattice and units
+lattice		sq	1
+units 		lj
+#integration timestep
+variable	dt_integration	equal	0.002
+timestep  	${dt_integration}
+#damping parameter
+variable        Tdamping        equal 100*${dt_integration}
+
+#simulation region
+region 	SimRegion block 0 ${Lbox} 0 ${Lbox} -100 100
+create_box BOX SimRegion
+
+
+#interaction between the particles (of different bacteria), we use a truncated LJ as a try
+variable	eps_particles		equal	1
+variable	cut_particles		equal	${Diameter}
+variable	sigma_particles		equal	${cut_particles}/2^(1.0/6)*1.01
+pair_style      lj/cut  ${Diameter}
+pair_coeff      1 1 ${eps_particles} ${sigma_particles} ${cut_particles}
+pair_modify	shift	yes
+
+#log log.lammps
+thermo_style	custom step atoms temp pe ke press
+thermo		100
+
+
+variable	Nmol	equal	0
+label	CREATE_MOL
+	include in.create_molecule_ordered
+	if "${Nmol} < ${num_mol}" then "jump in.bacteria CREATE_MOL"
+
+fix 2D all enforce2d
+fix	DEFORM	all deform 1 x final 0 ${SideLength} y final 0 ${SideLength} remap x
+neigh_modify exclude molecule all #exclude the computation of the forces between particles of the same molecule
+variable	Temperature	equal	100
+fix	NVT all rigid/nvt/small molecule temp ${Temperature}	${Temperature}	${Tdamping}
+run	10000
+unfix	NVT
+unfix	DEFORM
+
+
+#dump WRITE all custom 10 dumps/compressed.txt x y z
+#dump_modify WRITE sort id
+#run	0
+#undump	WRITE
+velocity all set 0.0 0.0 0.0
+
+fix	NVE all rigid/nve/small molecule
+variable	viscosity	equal	10
+variable viscosity2 equal 20
+variable	velocity	equal	100
+
+
+# 0 10 100 does not crash 1.500.000
+
+variable	tau_run	equal	10	#timestep, with exp distribution
+variable	tau_tumble	equal	10	#timestep, fixed
+variable	Torque		equal	200
+variable	ForceTorque	equal	${Torque}/${LL}*${viscosity}
+variable	Frun		equal	${viscosity}*${velocity}
+variable	NP	equal	atoms
+group	HEAD	id 1:${NP}:${Nbeads}
+group	CENTER	id 5:${NP}:${Nbeads}
+group	TAIL	id 10:${NP}:${Nbeads}
+
+#set properties of the HEAD
+variable	fraction_tumble	equal ${tau_tumble}/(${tau_run}+${tau_tumble})
+set		group	HEAD rat ${fraction_tumble} ${tau_run} ${tau_tumble} 123
+fix	RAT	HEAD	rtp	${Frun} ${ForceTorque} ${tau_run} ${tau_tumble} ${Nbeads} 345
+fix	VIS	all	viscous	${viscosity}
+
+run	1000
+
+compute MSD CENTER msd com yes
+variable	msd	equal	c_MSD[4]
+#variable	tempo	equal	${dt_integration}*timestep
+thermo_style	custom step atoms temp pe ke press v_msd
+thermo		100
+
+fix extra all print 100 "${msd}" file data/msd_${phi}.txt
+run	10000000
+
+#reset_timestep 0
+#dump WRITE all custom 100 dumps/dumpfile.*.txt x y mol
+#dump_modify WRITE pad 10
+#dump_modify WRITE sort id
+#run	500000
+#undump	WRITE
+
+dump WRITE all custom 10 data/final_all_C{phi}.txt x y
+dump_modify WRITE sort id
+run	0
+undump	WRITE
+
+dump WRITE CENTER custom 10 data/final_C${phi}.txt x y
+dump_modify WRITE sort id
+run	0
+undump	WRITE

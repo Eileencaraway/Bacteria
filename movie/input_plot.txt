@@ -1,0 +1,72 @@
+set label 1 sprintf("%02d:%02d:%02d",0,13,12) at 1.02,0.9 font "arial,14"
+set style fill noborder
+set object 1 circle at 0.784064,0.147585 size 0.00454545
+set object 1 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 2 circle at 0.786818,0.145797 size 0.00454545
+set object 2 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 3 circle at 0.78957,0.144009 size 0.00454545
+set object 3 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 4 circle at 0.792323,0.142221 size 0.00454545
+set object 4 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 5 circle at 0.795077,0.140432 size 0.00454545
+set object 5 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 6 circle at 0.797829,0.138644 size 0.00454545
+set object 6 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 7 circle at 0.800582,0.136856 size 0.00454545
+set object 7 fc rgb "dark-grey" fillstyle solid 1.0 noborder front
+set object 8 circle at 0.63869,0.573272 size 0.00454545
+set object 8 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 9 circle at 0.64171,0.574557 size 0.00454545
+set object 9 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 10 circle at 0.644731,0.575843 size 0.00454545
+set object 10 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 11 circle at 0.647752,0.577128 size 0.00454545
+set object 11 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 12 circle at 0.650772,0.578414 size 0.00454545
+set object 12 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 13 circle at 0.653792,0.5797 size 0.00454545
+set object 13 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 14 circle at 0.656814,0.580985 size 0.00454545
+set object 14 fc rgb "red" fillstyle solid 1.0 noborder front
+set object 15 circle at 0.791829,0.986342 size 0.00454545
+set object 15 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 16 circle at 0.793723,0.989024 size 0.00454545
+set object 16 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 17 circle at 0.795617,0.991705 size 0.00454545
+set object 17 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 18 circle at 0.797512,0.994386 size 0.00454545
+set object 18 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 19 circle at 0.799406,0.997068 size 0.00454545
+set object 19 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 20 circle at 0.8013,0.999748 size 0.00454545
+set object 20 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 21 circle at 0.803194,0.00243031 size 0.00454545
+set object 21 fc rgb "web-green" fillstyle solid 1.0 noborder front
+set object 22 circle at 0.158139,0.916094 size 0.00454545
+set object 22 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 23 circle at 0.157473,0.912879 size 0.00454545
+set object 23 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 24 circle at 0.156808,0.909665 size 0.00454545
+set object 24 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 25 circle at 0.156142,0.90645 size 0.00454545
+set object 25 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 26 circle at 0.155477,0.903235 size 0.00454545
+set object 26 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 27 circle at 0.154811,0.900021 size 0.00454545
+set object 27 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 28 circle at 0.154145,0.896806 size 0.00454545
+set object 28 fc rgb "web-blue" fillstyle solid 1.0 noborder front
+set object 29 circle at 0.331618,0.965814 size 0.00454545
+set object 29 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
+set object 30 circle at 0.333676,0.968371 size 0.00454545
+set object 30 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
+set object 31 circle at 0.335733,0.970929 size 0.00454545
+set object 31 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
+set object 32 circle at 0.337792,0.973486 size 0.00454545
+set object 32 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
+set object 33 circle at 0.33985,0.976044 size 0.00454545
+set object 33 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
+set object 34 circle at 0.341908,0.978602 size 0.00454545
+set object 34 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
+set object 35 circle at 0.343965,0.981159 size 0.00454545
+set object 35 fc rgb "dark-magenta" fillstyle solid 1.0 noborder front
