@@ -101,12 +101,12 @@ bool change_motility = false;
 bool reproduction = true;
 bool only_running = false;
 bool switch_run_tumble = true;
-int number_initial = 5;
-int Ncharge=100;
+int number_initial = 100;
+int Ncharge=100;//maximum time of visiting
 
 
 // probabilites
-double p_sibiling_bounded = 0.6;
+double p_sibiling_bounded = 0.8;
 
 double Lbox,Frun,Torque,Kn,DiameterPush,viscosity,Velocity,Mesh_size;
 double Length_Molecule,Diameter,dt_integration;
@@ -199,44 +199,65 @@ int main(int narg, char **arg){
     if(only_running == true) state = 0;
     else{ if(Xrandom() < (t_run/(t_run+t_tumble))) state = 0; else state = 1;}
     create_bacterium(lmp, Xrandom()*Lbox, Xrandom()*Lbox, 0, angle, type, state,0);
-    cout << q+1 << "	" << num_bacteria << endl;
+//    cout << q+1 << "	" << num_bacteria << endl;
   }
   run_and_tumble(lmp, t_run, t_tumble); // fic the time of the transitions
 
-  open_dump(lmp,3);
-  //int step_reproduction = int(t_reproduction/(dt_integration*NumGrowMolecules));
-  int total_step= 10000000;
-//  cout<<"AAA"<<endl;getchar();
-  //int final_time = 10*60*60;
-  //int total_step = final_time/dt_integration;
-  //for(int q = 0; q < int(total_step/step_reproduction); q++){
-  //  update(lmp,me,lammps,step_reproduction);
+  int time_dumps = 3; // dump ever X second
+  int final_time = 7*60*60;  // we simulate 7h
+  int total_step = final_time/dt_integration;
   double tau= Mesh_size/Velocity;
-  int record_interval=tau/dt_integration;
-  for(int q = 0; q < int(total_step/record_interval); q++){
-    update(lmp,me,lammps,record_interval);
-    trail_record(lmp);// might need to change the record frequency
-  //  if(reproduction) grow_molecules(lmp);
+  int timestep_record = 10*int(tau/dt_integration);
+  int timestep_grow = int(t_reproduction/(dt_integration*NumGrowMolecules));
+  int next_grow = timestep_grow;
+  int next_record = timestep_record;
+
+//  cout << "Grow " <<  timestep_grow << "	" << timestep_grow*dt_integration << endl; getchar();
+
+  int step_done = 0;
+  open_dump(lmp,time_dumps);
+  int timestep_todo;
+  while(step_done < total_step){
+    if(next_grow <= next_record){
+//      cout << "AAAA " << timestep_todo << endl;
+      timestep_todo = next_grow-step_done;
+      update(lmp,me,lammps,timestep_todo);
+      if(reproduction){
+         grow_molecules(lmp);
+//         cout << "Done reproduction after " << step_done*dt_integration << " sec " << endl; getchar();
+      }
+      if(next_grow == next_record){
+        trail_record(lmp);
+        next_record += timestep_record;
+      }
+      step_done += timestep_todo;
+      next_grow += timestep_grow;
+    }else{
+      timestep_todo = next_record-step_done;
+      update(lmp,me,lammps,timestep_todo);
+      trail_record(lmp);
+      next_record += timestep_record;
+      step_done += timestep_todo;
+    }
   }
 
   close_dump(lmp);
   // for record the trail count
-    int Q[Ncharge];
-    for(int k=0; k<Ncharge; k++){
-      Q[k]=0;
-    }
-    for(int i=0;i<Nmesh;i++){
-      for(int j=0; j<Nmesh; j++){
-        for(int k=0; k<Ncharge; k++){
-          if(Trail[i][j].q == k+1) Q[k]+=1;
-         }
-        }
+  int Q[Ncharge];
+  for(int k=0; k<Ncharge; k++){
+    Q[k]=0;
+  }
+  for(int i=0;i<Nmesh;i++){
+    for(int j=0; j<Nmesh; j++){
+      for(int k=0; k<Ncharge; k++){
+        if(Trail[i][j].q == k+1) Q[k]+=1;
       }
+    }
+  }
 
   ofstream outfile("charge.txt");
   for(int k=0; k<Ncharge; k++){
-    outfile<<k<<'='<<Q[k]<<endl;
-    cout<<Q[k]<<endl;
+    outfile<<k<<"	" <<Q[k]<<endl;
   }
   outfile.close();
 
@@ -294,7 +315,6 @@ void update(LAMMPS* lmp, int me, int lammps, int nsteps){
 
   sprintf(run,"fix NVE mobile rigid/nve/small molecule"); lmp->input->one(run);
   sprintf(run,"fix VIS     mobile     viscous %g", viscosity); lmp->input->one(run);
-//  sprintf(run,"neigh_modify exclude group all deleted"); lmp->input->one(run);
   sprintf(run,"neigh_modify exclude molecule all"); lmp->input->one(run);
   // make info avaiable to callback function
   // the purpose here is to addforce on previous forces per step
@@ -616,27 +636,25 @@ void write_positions(LAMMPS* lmp, FILE *out, double tempo){
 void mesh(LAMMPS* lmp){
   //this function is to produce the mesh and initial the atoms in the center of the grid
   char line[1064];
-  double x,y,z;
-  int new_id=0;
+//  double x,y,z;
+//  int new_id=0;
   //int natoms =static_cast<int>(lmp->atom->natoms);
   //how to really link with atom id?
   for(int i=0;i<Nmesh;i++){
     for(int j=0; j<Nmesh; j++){
-      x=Mesh_size*(i+0.5);
-      y=Mesh_size*(j+0.5);
-      cout<<x<<endl;
-      cout<<y<<endl;
-      z=0.0;
-      sprintf(line,"create_atoms 2 single %g %g %g", x,y,z);lmp->input->one(line);
-    //  sprintf(line,"set atom * charge 1");lmp->input->one(line);
-      new_id=new_id+1;
-      cout<<"new_id="<<new_id<<endl;
-      Trail[i][j].trail_id = new_id;
+//      x=Mesh_size*(i+0.5);
+//      y=Mesh_size*(j+0.5);
+//      z=0.0;
+//      sprintf(line,"create_atoms 2 single %g %g %g", x,y,z);lmp->input->one(line);
+//      new_id=new_id+1;
+//      cout<<"new_id="<<new_id<<endl;
+//      Trail[i][j].trail_id = new_id;
       Trail[i][j].q=0;
     }
   }
   // set all the mesh atom into one groups
   sprintf(line,"group MESH type 2");lmp->input->one(line);
+//  sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
 }
 
 void trail_record(LAMMPS* lmp){
@@ -644,22 +662,29 @@ void trail_record(LAMMPS* lmp){
   int is,im;
   int i,j;
   char line[1064];
+  double xm,ym;
   for(int m=0; m<Nmax_bacteria; m++){
     if(Bacterium[m].exist!= -1){
       is=lmp->atom->map(Bacterium[m].nstart);
-      im=is+NBeads_Molecule;
-      i=int(x[im][0]/Mesh_size);//what if x larger than the size of the box/mesh
-      j=int(x[im][1]/Mesh_size);
-      cout<<"i="<<i<<endl;
-      cout<<"j="<<j<<endl;
-      if(i=Nmesh) i-=1;
-      if(i=0) i+=1;
-      if(j=Nmesh) j-=1;
-      if(j=0) j+=1;
-      if(Trail[i][j].q<Ncharge) Trail[i][j].q= Trail[i][j].q+1;
+      im=is+int(NBeads_Molecule/2);
+      xm = x[im][0]; if(xm < 0) xm += Lbox; else if(xm > Lbox) xm -= Lbox;
+      ym = x[im][1]; if(ym < 0) ym += Lbox; else if(ym > Lbox) ym -= Lbox;
+      i=int(xm/Mesh_size);
+      j=int(ym/Mesh_size);
+      if(i == Nmesh) i-=1;
+      if(i < 0) i = 0;
+      if(j == Nmesh) j-=1;
+      if(j < 0) j = 0;
+
+      if(Trail[i][j].q == 0){ // site has never been visited, we create an atom
+        sprintf(line,"create_atoms 2 single %g %g %g", Mesh_size*(i+0.5),Mesh_size*(j+0.5),0.0);lmp->input->one(line);
+        Trail[i][j].trail_id = lmp->atom->natoms;
+        sprintf(line,"group MESH type 2");lmp->input->one(line);
+        sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
+      }
+      Trail[i][j].q= Trail[i][j].q+1;
       sprintf(line,"variable nm equal %d",Trail[i][j].trail_id);lmp->input->one(line);
       sprintf(line,"set atom ${nm} charge %d",Trail[i][j].q); lmp->input->one(line);
-
     }
   }
 }
