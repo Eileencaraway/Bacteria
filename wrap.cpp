@@ -83,7 +83,8 @@ int touch(LAMMPS* lmp, int ns, int ne, double radius);
 void trail_record(LAMMPS* lmp);
 void mesh(LAMMPS* lmp);
 void trail_count(LAMMPS* lmp, FILE *out, double tempo);
-
+void compute_velocity(LAMMPS* lmp);
+void visit_frequency(int Ncharge,int Nmesh);
 int num_bacteria = 0;
 double total_time = 0;
 // all times expressed in seconds
@@ -94,19 +95,21 @@ double t_tumble = 0.5;
 double t_reproduction = 60*60; // = 1h
 
 double t_stationary = 3;
-double t_immobile = 100; // typical time before a mobile bacterium becomes immobile
-double t_mobile = 1000; // typical time before an immobile bacterium becomes mobile
+double t_immobile = 0.05; // typical time before a mobile bacterium becomes immobile
+double t_mobile = 0.01; // 1/t_mobile is the real time
 
+bool psl = true;
 bool change_motility = false;
 bool reproduction = true;
 bool only_running = false;
 bool switch_run_tumble = true;
-int number_initial = 100;
-int Ncharge=100;//maximum time of visiting
+int number_initial = 10;
+int Ncharge=200;//maximum time of visiting
+int count2=0;// for count how many times the visit_frequency funtion is used
 
 
 // probabilites
-double p_sibiling_bounded = 0.8;
+double p_sibiling_bounded = 0.6;
 
 double Lbox,Frun,Torque,Kn,DiameterPush,viscosity,Velocity,Mesh_size;
 double Length_Molecule,Diameter,dt_integration;
@@ -203,11 +206,11 @@ int main(int narg, char **arg){
   }
   run_and_tumble(lmp, t_run, t_tumble); // fic the time of the transitions
 
-  int time_dumps = 3; // dump ever X second
-  int final_time = 7*60*60;  // we simulate 7h
+  int time_dumps = 10; // dump ever X second
+  int final_time = 10*60*60;  // we simulate 7h
   int total_step = final_time/dt_integration;
   double tau= Mesh_size/Velocity;
-  int timestep_record = 10*int(tau/dt_integration);
+  int timestep_record = int(tau/dt_integration);
   int timestep_grow = int(t_reproduction/(dt_integration*NumGrowMolecules));
   int next_grow = timestep_grow;
   int next_record = timestep_record;
@@ -228,6 +231,8 @@ int main(int narg, char **arg){
       }
       if(next_grow == next_record){
         trail_record(lmp);
+        compute_velocity(lmp);
+        visit_frequency(Ncharge,Nmesh);
         next_record += timestep_record;
       }
       step_done += timestep_todo;
@@ -236,6 +241,8 @@ int main(int narg, char **arg){
       timestep_todo = next_record-step_done;
       update(lmp,me,lammps,timestep_todo);
       trail_record(lmp);
+      compute_velocity(lmp);
+      visit_frequency(Ncharge,Nmesh);
       next_record += timestep_record;
       step_done += timestep_todo;
     }
@@ -243,25 +250,6 @@ int main(int narg, char **arg){
 
   close_dump(lmp);
   // for record the trail count
-  int Q[Ncharge];
-  for(int k=0; k<Ncharge; k++){
-    Q[k]=0;
-  }
-  for(int i=0;i<Nmesh;i++){
-    for(int j=0; j<Nmesh; j++){
-      for(int k=0; k<Ncharge; k++){
-        if(Trail[i][j].q == k+1) Q[k]+=1;
-      }
-    }
-  }
-
-  ofstream outfile("charge.txt");
-  for(int k=0; k<Ncharge; k++){
-    outfile<<k<<"	" <<Q[k]<<endl;
-  }
-  outfile.close();
-
-
   MPI_Finalize();
 
   if (lammps == 1) delete lmp;
@@ -271,6 +259,7 @@ int main(int narg, char **arg){
 // dump every x seconds
 void open_dump(LAMMPS* lmp, int seconds){
   int every = int(seconds/dt_integration);
+  int not_every= 100*every;
   char run[1024];
   sprintf(run,"group TOTAL union mobile stationary"); lmp-> input->one(run);
 
@@ -290,7 +279,7 @@ void open_dump(LAMMPS* lmp, int seconds){
   sprintf(run,"dump_modify WRITE2 sort id");
   lmp->input->one(run);
 
-  sprintf(run,"dump WRITE3 MESH custom %d mesh/dumpfile.*.txt x y id q",every);
+  sprintf(run,"dump WRITE3 MESH custom %d mesh/dumpfile.*.txt x y id q",not_every);
   lmp->input->one(run);
   sprintf(run,"dump_modify WRITE3 pad 10");
   lmp->input->one(run);
@@ -653,7 +642,7 @@ void mesh(LAMMPS* lmp){
     }
   }
   // set all the mesh atom into one groups
-  sprintf(line,"group MESH type 2");lmp->input->one(line);
+  //sprintf(line,"group MESH type 2");lmp->input->one(line);
 //  sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
 }
 
@@ -663,6 +652,7 @@ void trail_record(LAMMPS* lmp){
   int i,j;
   char line[1064];
   double xm,ym;
+  if(psl){
   for(int m=0; m<Nmax_bacteria; m++){
     if(Bacterium[m].exist!= -1){
       is=lmp->atom->map(Bacterium[m].nstart);
@@ -681,11 +671,16 @@ void trail_record(LAMMPS* lmp){
         Trail[i][j].trail_id = lmp->atom->natoms;
         sprintf(line,"group MESH type 2");lmp->input->one(line);
         sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
-      }
+        Trail[i][j].q= Trail[i][j].q+1;
+        sprintf(line,"variable nm equal %d",Trail[i][j].trail_id);lmp->input->one(line);
+        sprintf(line,"set atom ${nm} charge %d",Trail[i][j].q); lmp->input->one(line);
+      }else if((Trail[i][j].q<Ncharge)&(Trail[i][j].q>0)){
       Trail[i][j].q= Trail[i][j].q+1;
       sprintf(line,"variable nm equal %d",Trail[i][j].trail_id);lmp->input->one(line);
       sprintf(line,"set atom ${nm} charge %d",Trail[i][j].q); lmp->input->one(line);
+      }
     }
+  }
   }
 }
 
@@ -911,4 +906,68 @@ void compute_msd(LAMMPS* lmp, int lammps, int me){
     update(lmp,me,lammps,step_reproduction);
     if(reproduction) grow_molecules(lmp);
   }
+}
+
+void compute_velocity(LAMMPS* lmp){
+  int count=0;
+  double ** v = lmp->atom->v;
+  double vsum=0.0;
+  double vxsum=0.0;
+  double vysum=0.0;
+//  double vzsum=0.0;
+  int ne,ie;
+  double Vx,Vy,v1,v_average,phi; //phi is a parameter
+
+  for(int m = 0; m < Nmax_bacteria; m++){
+    if(Bacterium[m].exist > 0){
+      ne = Bacterium[m].nend;   // global id
+      ie = lmp->atom->map(ne);   // local id
+      Vx=v[ie][0];
+      Vy=v[ie][1];
+    //  Vz=v[ie][2];
+      v1=sqrt(Vx*Vx+Vy*Vy);
+      //v1=sqrt(v[ie][0]*v[ie][0]+v[ie][1]*v[ie][1]+v[ie][2]*v[ie][2]);
+      vsum+=v1;
+      vxsum+=Vx;
+      vysum+=Vy;
+      count+=1;
+    }
+  }
+  v_average=vsum/count;
+  phi=sqrt(abs(vxsum*vxsum+vysum*vysum))/(count*v_average);
+
+  ofstream outfile("velocity.txt",ios::app);
+  outfile<<v_average<<"	" <<phi<<endl;
+  //outfile.close();
+}
+
+void visit_frequency(int Ncharge,int Nmesh){
+  //no need for this for the moment, by use mesh dump output and read datas from python to realize this
+  int Q[Ncharge];
+  char buffer[1064];
+
+  for(int k=0; k<Ncharge; k++){
+    Q[k]=0;
+  }
+
+  if(psl){
+    count2+=1;
+  for(int i=0;i<Nmesh;i++){
+    for(int j=0; j<Nmesh; j++){
+      if(Trail[i][j].q!=0){
+        for(int k=0; k<Ncharge; k++){
+          if(Trail[i][j].q == k+1) Q[k]+=1;
+        }
+      }
+    }
+  }
+}
+  sprintf(buffer,"charge_%d.dat",count2);
+  ofstream outfile(buffer);
+  for(int k=0; k<Ncharge; k++){
+    outfile<<k<<"	" <<Q[k]<<endl;
+  }
+  outfile.close();
+  sprintf(buffer,"mv charge_%d.dat visit_frequency",count2);
+  system(buffer);
 }
