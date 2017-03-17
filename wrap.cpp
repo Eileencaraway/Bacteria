@@ -59,8 +59,6 @@
 using namespace LAMMPS_NS;
 using namespace std;
 
-void force_callback(void *, bigint, int, int *, double **, double **);
-
 struct Info {
   int me;
   LAMMPS *lmp;
@@ -70,6 +68,7 @@ FixRigidNVESmall *fixrigid;
 FixExternal *fixexternal;
 //FixRigidNHSmall *fixrigid;
 
+void force_callback(void *, bigint, int, int *, double **, double **);
 void simulate(LAMMPS* lmp);
 double get_single_variable(LAMMPS* lmp, const char* pippo);
 void setup(LAMMPS* lmp, int me);
@@ -91,35 +90,36 @@ double total_time = 0;
 // t_run, t_tumble, together with viscosity, velocity and torque, fix the MSD
 double t_run = 0.3;
 double t_tumble = 0.5;
+//double t_run = 0.99;
+//double t_tumble = 0.01;
 // reproduction time
 double t_reproduction = 60*60; // = 1h
 
 double t_stationary = 3;
-double t_immobile = 0.05; // typical time before a mobile bacterium becomes immobile
-double t_mobile = 0.01; // 1/t_mobile is the real time
+double t_immobile = 0.001; // typical time before a mobile bacterium becomes immobile
+double t_mobile = 0.002; // typical time before an immobile bacterium becomes mobile
 
 bool psl = true;
 bool change_motility = false;
-bool reproduction = true;
-bool only_running = false;
+bool reproduction = false;
+bool only_running = false;// if you want only running, you also need to turn down swith_run_tumble
 bool switch_run_tumble = true;
-int number_initial = 10;
-int Ncharge=200;//maximum time of visiting
+int number_initial = 1;
+int Ncharge=1000;//maximum time of visiting
 int count2=0;// for count how many times the visit_frequency funtion is used
-
-
 // probabilites
 double p_sibiling_bounded = 0.6;
 
 double Lbox,Frun,Torque,Kn,DiameterPush,viscosity,Velocity,Mesh_size;
 double Length_Molecule,Diameter,dt_integration;
 int NBeads_Molecule, NumGrowMolecules,Nmesh,Grid_cover;
+
 void write_positions(LAMMPS* lmp, FILE* out, double tempo);
 void open_dump(LAMMPS* lmp, int seconds);
 void close_dump(LAMMPS* lmp);
 void delete_bacterium(LAMMPS* lmp, int m);
 //void change_state(LAMMPS* lmp, int n);
-void run_and_tumble(LAMMPS* lmp, double t_run, double t_tumble);
+void run_and_tumble();
 void fix_times(int m);
 void compute_msd(LAMMPS* lmp, int lammps, int me);
 
@@ -149,7 +149,6 @@ public:
 int main(int narg, char **arg){
   system("rm dumps/*");
   init_random(1,1);
-//  char run[1024];
   // setup MPI and various communicators
   // driver runs on all procs in MPI_COMM_WORLD
   // comm_lammps only has 1st P procs (could be all or any subset)
@@ -185,11 +184,10 @@ int main(int narg, char **arg){
   if (lammps == 1) lmp = new LAMMPS(0,NULL,comm_lammps);
 
   setup(lmp, me);
-  Mesh_size = Lbox/Nmesh;
+  //Mesh_size = Lbox/Nmesh;
   mesh(lmp);
 
-
-  total_time = 0;
+//  total_time = 0;
 
 //  compute_msd(lmp, lammps, me); return 0; // compute the MSD of crawling bacteria
 
@@ -204,22 +202,25 @@ int main(int narg, char **arg){
     create_bacterium(lmp, Xrandom()*Lbox, Xrandom()*Lbox, 0, angle, type, state,0);
 //    cout << q+1 << "	" << num_bacteria << endl;
   }
-  run_and_tumble(lmp, t_run, t_tumble); // fic the time of the transitions
+  run_and_tumble(); // fic the time of the transitions
 
-  int time_dumps = 10; // dump ever X second
-  int final_time = 10*60*60;  // we simulate 7h
+  int time_dumps = 5; // dump ever X second
+  int final_time = 1*60*60;  // we simulate 7h
   int total_step = final_time/dt_integration;
-  double tau= Mesh_size/Velocity;
+  double tau= Mesh_size/Velocity;// this is actually quite nice
   int timestep_record = int(tau/dt_integration);
   int timestep_grow = int(t_reproduction/(dt_integration*NumGrowMolecules));
   int next_grow = timestep_grow;
   int next_record = timestep_record;
-
 //  cout << "Grow " <<  timestep_grow << "	" << timestep_grow*dt_integration << endl; getchar();
 
   int step_done = 0;
   open_dump(lmp,time_dumps);
   int timestep_todo;
+
+  //ofstream outrecord("recortimes.dat");
+  //ns=Bacterium[0].nstart;
+
   while(step_done < total_step){
     if(next_grow <= next_record){
 //      cout << "AAAA " << timestep_todo << endl;
@@ -231,8 +232,10 @@ int main(int narg, char **arg){
       }
       if(next_grow == next_record){
         trail_record(lmp);
+       //x=lmp->atom->x;
+        //is = lmp->atom->map(ns);
+        //outrecord <<  step_done<<' '<<x[is][0]<<' '<<x[is][1]<<endl;
         compute_velocity(lmp);
-        visit_frequency(Ncharge,Nmesh);
         next_record += timestep_record;
       }
       step_done += timestep_todo;
@@ -242,12 +245,10 @@ int main(int narg, char **arg){
       update(lmp,me,lammps,timestep_todo);
       trail_record(lmp);
       compute_velocity(lmp);
-      visit_frequency(Ncharge,Nmesh);
       next_record += timestep_record;
       step_done += timestep_todo;
     }
   }
-
   close_dump(lmp);
   // for record the trail count
   MPI_Finalize();
@@ -311,7 +312,7 @@ void update(LAMMPS* lmp, int me, int lammps, int nsteps){
   info.me = me;
   info.lmp = lmp;
   // set callback to function inside fix external
-  sprintf(run,"fix CALLBACK all external pf/callback 1 1"); // change all to mobile
+  sprintf(run,"fix CALLBACK mobile external pf/callback 1 1"); // change all to mobile
   lmp->input->one(run);
   //don't know how it works here
   ifix = lmp->modify->find_fix("CALLBACK");
@@ -339,7 +340,7 @@ void delete_bacterium(LAMMPS* lmp, int m){
   int ns = Bacterium[m].nstart;
   int ne = Bacterium[m].nend;
   int k = 0; for(int q = 0; q < Nmax_bacteria; q++) if(Bacterium[q].exist != -1) k++;
-  Bacterium[m].exist = -1;  // don't understand here, why k and k1
+  Bacterium[m].exist = -1;  //
   int k1 = 0; for(int q = 0; q < Nmax_bacteria; q++) if(Bacterium[q].exist != -1) k1++;
   sprintf(line,"group deleted id %d:%d", ns, ne); lmp->input->one(line);
   sprintf(line,"neigh_modify exclude group all deleted"); lmp->input->one(line); // no need to compute forces between deleted molecules
@@ -524,7 +525,7 @@ void grow_molecules(LAMMPS* lmp){
   int p;
 //  bool fix_sibiling, ok_splitting;
   for(int m = 0; m < Nmax_bacteria; m++){
-    if(grow[m] != -1){
+    if((grow[m] != -1)&(Bacterium[m].state !=2)){
       ns = Bacterium[m].nstart; // gloabal id
       ne = Bacterium[m].nend; // global id
 //      state = Bacterium[m].state;
@@ -642,7 +643,7 @@ void mesh(LAMMPS* lmp){
     }
   }
   // set all the mesh atom into one groups
-  //sprintf(line,"group MESH type 2");lmp->input->one(line);
+  sprintf(line,"group MESH type 2");lmp->input->one(line);
 //  sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
 }
 
@@ -652,15 +653,24 @@ void trail_record(LAMMPS* lmp){
   int i,j;
   char line[1064];
   double xm,ym;
+
+
+
+
+
   if(psl){
   for(int m=0; m<Nmax_bacteria; m++){
     if(Bacterium[m].exist!= -1){
       is=lmp->atom->map(Bacterium[m].nstart);
-      im=is+int(NBeads_Molecule/2);
+      //im=is+int(NBeads_Molecule/2);
+      im=is;
       xm = x[im][0]; if(xm < 0) xm += Lbox; else if(xm > Lbox) xm -= Lbox;
       ym = x[im][1]; if(ym < 0) ym += Lbox; else if(ym > Lbox) ym -= Lbox;
-      i=int(xm/Mesh_size);
-      j=int(ym/Mesh_size);
+      i=floor(xm/Mesh_size);
+      j=floor(ym/Mesh_size);
+
+      //ofstream outij("ij.dat",ios::app);
+      //outij<<i<<' '<<j<<endl;
       if(i == Nmesh) i-=1;
       if(i < 0) i = 0;
       if(j == Nmesh) j-=1;
@@ -670,18 +680,25 @@ void trail_record(LAMMPS* lmp){
         sprintf(line,"create_atoms 2 single %g %g %g", Mesh_size*(i+0.5),Mesh_size*(j+0.5),0.0);lmp->input->one(line);
         Trail[i][j].trail_id = lmp->atom->natoms;
         sprintf(line,"group MESH type 2");lmp->input->one(line);
-        sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
-        Trail[i][j].q= Trail[i][j].q+1;
-        sprintf(line,"variable nm equal %d",Trail[i][j].trail_id);lmp->input->one(line);
-        sprintf(line,"set atom ${nm} charge %d",Trail[i][j].q); lmp->input->one(line);
-      }else if((Trail[i][j].q<Ncharge)&(Trail[i][j].q>0)){
+        //sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
+      }else if(Trail[i][j].q<Ncharge){
       Trail[i][j].q= Trail[i][j].q+1;
       sprintf(line,"variable nm equal %d",Trail[i][j].trail_id);lmp->input->one(line);
       sprintf(line,"set atom ${nm} charge %d",Trail[i][j].q); lmp->input->one(line);
       }
+      //if(Trail[i][j].q == 0){ // site has never been visited, we create an atom
+        //sprintf(line,"create_atoms 2 single %g %g %g", Mesh_size*(i+0.5),Mesh_size*(j+0.5),0.0);lmp->input->one(line);
+      ///  Trail[i][j].trail_id = lmp->atom->natoms;
+      //  sprintf(line,"group MESH type 2");lmp->input->one(line);
+      //  sprintf(line,"neigh_modify exclude type 2 2"); lmp->input->one(line); // no need to compute forces between grid atoms
+      //}
+      //Trail[i][j].q= Trail[i][j].q+1;
+      //sprintf(line,"variable nm equal %d",Trail[i][j].trail_id);lmp->input->one(line);
+      //sprintf(line,"set atom ${nm} charge %d",Trail[i][j].q); lmp->input->one(line);
     }
   }
   }
+
 }
 
 
@@ -796,6 +813,8 @@ void force_callback(void *ptr, bigint ntimestep, int nlocal, int *id, double **x
           sprintf(mobiles,"%s %d:%d",mobiles,ns,ne); n_mobiles++;
         }
         fix_times(m);
+
+
         state = Bacterium[m].state;
       }
 
@@ -864,7 +883,7 @@ void fix_times(int m){
 }
 
 
-void run_and_tumble(LAMMPS* lmp, double t_run, double t_tumble){
+void run_and_tumble(){
   for(int m=0; m< Nmax_bacteria; m++) fix_times(m);
 }
 
@@ -885,7 +904,7 @@ void compute_msd(LAMMPS* lmp, int lammps, int me){
     create_bacterium(lmp, Xrandom()*Lbox, Xrandom()*Lbox, 0, angle, type, state,0);
     cout << q+1 << "	" << num_bacteria << endl;
   }
-  run_and_tumble(lmp, t_run, t_tumble); // fic the time of the transitions
+  run_and_tumble(); // fic the time of the transitions
   int index_center = int(NBeads_Molecule/2)+1;
   int natoms = NBeads_Molecule*number_initial;
   char buffer[100];
@@ -914,9 +933,9 @@ void compute_velocity(LAMMPS* lmp){
   double vsum=0.0;
   double vxsum=0.0;
   double vysum=0.0;
-//  double vzsum=0.0;
+  double vzsum=0.0;
   int ne,ie;
-  double Vx,Vy,v1,v_average,phi; //phi is a parameter
+  double Vx,Vy,Vz,v1,v_average,phi; //phi is a parameter
 
   for(int m = 0; m < Nmax_bacteria; m++){
     if(Bacterium[m].exist > 0){
@@ -924,21 +943,22 @@ void compute_velocity(LAMMPS* lmp){
       ie = lmp->atom->map(ne);   // local id
       Vx=v[ie][0];
       Vy=v[ie][1];
-    //  Vz=v[ie][2];
+      Vz=v[ie][2];
       v1=sqrt(Vx*Vx+Vy*Vy);
       //v1=sqrt(v[ie][0]*v[ie][0]+v[ie][1]*v[ie][1]+v[ie][2]*v[ie][2]);
       vsum+=v1;
       vxsum+=Vx;
       vysum+=Vy;
+      vzsum+=Vz;
       count+=1;
     }
   }
   v_average=vsum/count;
-  phi=sqrt(abs(vxsum*vxsum+vysum*vysum))/(count*v_average);
+  phi=sqrt(abs(vxsum*vxsum+vysum*vysum+vzsum*vzsum))/(count*v_average);
 
   ofstream outfile("velocity.txt",ios::app);
-  outfile<<v_average<<"	" <<phi<<endl;
-  //outfile.close();
+  outfile<<v_average<<" "<<Vx<<" "<<Vy<<" "<<phi<<endl;
+  outfile.close();
 }
 
 void visit_frequency(int Ncharge,int Nmesh){
@@ -968,6 +988,4 @@ void visit_frequency(int Ncharge,int Nmesh){
     outfile<<k<<"	" <<Q[k]<<endl;
   }
   outfile.close();
-  sprintf(buffer,"mv charge_%d.dat visit_frequency",count2);
-  system(buffer);
 }
